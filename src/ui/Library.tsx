@@ -71,6 +71,9 @@ export function Library() {
             🔒
           </button>
         )}
+        <button class="icon" title="Accordeur" onClick={() => go({ name: 'tuner' })}>
+          𝄞
+        </button>
         <button class="icon" title="Corbeille" onClick={() => go({ name: 'trash' })}>
           🗑
         </button>

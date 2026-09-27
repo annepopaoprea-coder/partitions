@@ -844,3 +844,91 @@ label.check {
   background: var(--accent);
   color: var(--accent-text);
 }
+
+/* Tuner */
+
+.tuner-display {
+  align-items: stretch !important;
+  text-align: center;
+}
+
+.tuner .note {
+  font-size: 4.5rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0.5rem 0;
+}
+
+.tuner .note sub {
+  font-size: 1.5rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.tuner .note.ok {
+  color: var(--ok);
+}
+
+.gauge .scale {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.gauge .track {
+  position: relative;
+  height: 44px;
+  border-radius: 10px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--danger) 25%, transparent), color-mix(in srgb, var(--ok) 30%, transparent) 47% 53%, color-mix(in srgb, var(--danger) 25%, transparent));
+}
+
+.gauge .center {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--text);
+  opacity: 0.5;
+}
+
+.gauge .needle {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 6px;
+  margin-left: -3px;
+  border-radius: 3px;
+  background: var(--danger);
+  transition: left 0.08s linear;
+}
+
+.gauge .needle.ok {
+  background: var(--ok);
+}
+
+.strings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.strings button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 4.5rem;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.strings small {
+  font-size: 0.75rem;
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+.form section select {
+  width: 100%;
+}

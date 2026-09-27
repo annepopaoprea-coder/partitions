@@ -6,6 +6,7 @@ import { Reader } from './ui/Reader';
 import { SetlistView } from './ui/Setlists';
 import { Settings } from './ui/Settings';
 import { Trash } from './ui/Trash';
+import { Tuner } from './ui/Tuner';
 import { SongEditor } from './ui/SongEditor';
 
 export type View =
@@ -14,7 +15,8 @@ export type View =
   | { name: 'song'; id: string }
   | { name: 'setlist'; id: string }
   | { name: 'settings' }
-  | { name: 'trash' };
+  | { name: 'trash' }
+  | { name: 'tuner' };
 
 // Views stack like app screens; the Android back button pops them.
 let stack: View[] = [{ name: 'library' }];
@@ -117,6 +119,8 @@ function Screens() {
       return <Settings />;
     case 'trash':
       return <Trash />;
+    case 'tuner':
+      return <Tuner />;
     default:
       return <Library />;
   }
