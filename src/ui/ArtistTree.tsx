@@ -53,6 +53,7 @@ export function ArtistTree({ onShowList }: { onShowList: () => void }) {
   const [, rerender] = useState(0);
   const [query, setQuery] = useState('');
   const [picker, setPicker] = useState<{ student: Group; year: Group | null } | null>(null);
+  const [filing, setFiling] = useState<{ student: Group; songs: Song[] } | null>(null);
   const toggle = (key: string) => {
     if (open.has(key)) open.delete(key);
     else open.add(key);
@@ -125,6 +126,54 @@ export function ArtistTree({ onShowList }: { onShowList: () => void }) {
     // The song keeps its year if other students still work on it.
     const album = year && !otherStudents.length ? (song.groups.album ?? []).filter((a) => a !== year.id) : song.groups.album;
     await store.put({ ...song, groups: { ...song.groups, artist: otherStudents, album } });
+  }
+
+  // Put every year-less song of this student into the chosen school year.
+  async function fileIntoYear(student: Group, list: Song[], year: Group) {
+    const shared = list.filter((s) => (s.groups.artist ?? []).some((a) => a !== student.id));
+    const others = [
+      ...new Set(shared.flatMap((s) => (s.groups.artist ?? []).filter((a) => a !== student.id))),
+    ]
+      .map((id) => store.get<Group>(id)?.name)
+      .filter(Boolean);
+    const msg =
+      `Ranger ${list.length} morceau${list.length > 1 ? 'x' : ''} de ${student.name} dans ${year.name} ?` +
+      (others.length ? `\n\n${shared.length} de ces morceaux sont aussi travaillés par ${others.join(', ')} : ils passeront aussi en ${year.name}.` : '');
+    if (!confirm(msg)) return;
+    await store.put(list.map((s) => ({ ...s, groups: { ...s.groups, album: [...(s.groups.album ?? []), year.id] } })));
+    setFiling(null);
+    open.add(year.id);
+    open.add(`${year.id}/${student.id}`);
+  }
+
+  if (filing) {
+    return (
+      <div class="picker-overlay">
+        <div class="screen">
+          <header class="topbar">
+            <button class="icon" onClick={() => setFiling(null)}>
+              ←
+            </button>
+            <h1>Ranger les morceaux de {filing.student.name}</h1>
+          </header>
+          <p class="hint year-hint">
+            {filing.songs.length} morceau{filing.songs.length > 1 ? 'x' : ''} sans année scolaire. Choisissez l'année :
+          </p>
+          <ul class="year-choices">
+            {years.map((y) => (
+              <li key={y.id}>
+                <button class="row" onClick={() => fileIntoYear(filing.student, filing.songs, y)}>
+                  <span class="title">{y.name}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div class="toolbar">
+            <button onClick={addYear}>+ Nouvelle année scolaire</button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (picker) {
@@ -204,6 +253,11 @@ export function ArtistTree({ onShowList }: { onShowList: () => void }) {
                           >
                             ▶
                           </button>
+                          {!year && (
+                            <button class="file-year" onClick={() => setFiling({ student, songs: list })}>
+                              Ranger dans une année
+                            </button>
+                          )}
                           <button class="icon" title="Ajouter des morceaux" onClick={() => setPicker({ student, year })}>
                             ＋
                           </button>

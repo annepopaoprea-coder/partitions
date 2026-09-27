@@ -696,3 +696,31 @@ button.link {
   z-index: 20;
   white-space: nowrap;
 }
+
+button.file-year {
+  font-size: 0.85rem;
+  min-height: 32px;
+  padding: 0.2rem 0.7rem;
+  white-space: nowrap;
+}
+
+.year-hint {
+  padding: 0 1rem;
+}
+
+.year-choices {
+  list-style: none;
+  margin: 0;
+  padding: 0 0.5rem;
+}
+
+.year-choices .row {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  font-size: 1.05rem;
+  padding: 0.7rem 0.5rem;
+}
