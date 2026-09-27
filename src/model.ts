@@ -91,7 +91,16 @@ export interface PageAnnotations extends Base {
   items: AnnItem[];
 }
 
-export type Rec = Song | Group | Setlist | PageAnnotations;
+// App lock settings, shared by all devices (see lock.ts). `config` is null
+// when the lock is turned off.
+export interface LockRec extends Base {
+  kind: 'lock';
+  config: import('./lock').LockConfig | null;
+}
+
+export const LOCK_ID = 'lock';
+
+export type Rec = Song | Group | Setlist | PageAnnotations | LockRec;
 
 export function annId(songId: string, page: number) {
   return `ann:${songId}:${page}`;

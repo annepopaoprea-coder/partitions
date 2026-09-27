@@ -1,6 +1,7 @@
 import { useRef, useState } from 'preact/hooks';
 import { back } from '../app';
 import type { Rec } from '../model';
+import { SecuritySection } from './Lock';
 import { clientId, deviceName, drive, store, sync, useSignedIn, useSync } from '../services';
 
 export function Settings() {
@@ -71,6 +72,8 @@ export function Settings() {
             </button>
           )}
         </section>
+
+        <SecuritySection />
 
         <section>
           <h2>Synchronisation</h2>

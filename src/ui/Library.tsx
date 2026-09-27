@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'preact/hooks';
 import { go, SyncBadge } from '../app';
 import { GROUP_LABELS, GROUP_TYPES, uid, type Group, type GroupType, type Song } from '../model';
+import { lockConfig, lockNow } from './Lock';
 import { collator, groupNames, groupsOf, importFiles, normalize, store, useStore } from '../services';
 
 type Tab = 'songs' | 'setlists' | GroupType;
@@ -62,6 +63,11 @@ export function Library() {
       <header class="topbar">
         <h1>Partitions</h1>
         <SyncBadge />
+        {lockConfig() && (
+          <button class="icon" title="Verrouiller" onClick={lockNow}>
+            🔒
+          </button>
+        )}
         <button class="icon" title="Réglages" onClick={() => go({ name: 'settings' })}>
           ⚙
         </button>

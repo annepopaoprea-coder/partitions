@@ -119,6 +119,28 @@ export class DriveRemote implements Remote {
     });
   }
 
+  // Ask Google to sign in again (account chooser + consent), then check the
+  // chosen account is the one that owns this library: it must be able to open
+  // the same "Partitions" folder this device has been syncing with.
+  async reauthenticate(): Promise<boolean> {
+    const client = await this.gis();
+    const ok = await new Promise<boolean>((resolve) => {
+      this.pending = { resolve };
+      client.requestAccessToken({ prompt: 'select_account consent' });
+    });
+    if (!ok) return false;
+    const known = localStorage.getItem('drive.rootId');
+    if (!known) return false;
+    try {
+      const r = await fetch(`${API}/files/${known}?fields=id,trashed`, {
+        headers: { Authorization: `Bearer ${this.token}` },
+      });
+      return r.ok && !(await r.json()).trashed;
+    } catch {
+      return false;
+    }
+  }
+
   // Load the Google library ahead of time so signIn() runs synchronously
   // inside the gesture.
   preload() {
@@ -189,6 +211,7 @@ export class DriveRemote implements Remote {
     const root = await this.folder(ROOT_NAME, 'root');
     const [journal, files] = await Promise.all([this.folder('journal', root), this.folder('fichiers', root)]);
     this.folders = { root, journal, files };
+    localStorage.setItem('drive.rootId', root);
   }
 
   async listJournals(): Promise<RemoteEntry[]> {

@@ -533,3 +533,82 @@ textarea {
   background: transparent;
   border: none;
 }
+
+/* Lock */
+
+.lock-screen {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.lock-card {
+  width: min(100%, 380px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 1.5rem;
+}
+
+.lock-card img {
+  align-self: center;
+  border-radius: 14px;
+}
+
+.lock-card h1 {
+  text-align: center;
+  margin: 0 0 0.5rem;
+  font-size: 1.4rem;
+}
+
+.lock-card label,
+.lock-setup label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  width: 100%;
+}
+
+.lock-card input {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+button.link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  text-decoration: underline;
+  min-height: 32px;
+}
+
+.qr {
+  width: 220px;
+  background: #fff;
+  border-radius: 8px;
+}
+
+.recovery {
+  columns: 2;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.row-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.lock-card p {
+  margin: 0;
+}
