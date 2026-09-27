@@ -2,6 +2,7 @@ import { useState } from 'preact/hooks';
 import { back, go } from '../app';
 import type { Setlist, Song } from '../model';
 import { collator, groupNames, normalize, store, useStore } from '../services';
+import { ExportButton } from './ExportButton';
 
 export function SetlistView({ id }: { id: string }) {
   useStore();
@@ -61,6 +62,7 @@ export function SetlistView({ id }: { id: string }) {
       </header>
       <div class="toolbar">
         <button onClick={() => setPicking(true)}>+ Ajouter / retirer des morceaux</button>
+        <ExportButton title={list.name} songs={songs} label="📄 Envoyer en PDF" />
         <button
           class="danger"
           onClick={async () => {

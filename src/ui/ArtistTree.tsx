@@ -5,6 +5,7 @@ import { useState } from 'preact/hooks';
 import { go } from '../app';
 import { uid, type Group, type Song } from '../model';
 import { collator, groupsOf, normalize, store } from '../services';
+import { ExportButton } from './ExportButton';
 import { SongPicker } from './Setlists';
 
 const YEAR = /^\s*(\d{4})\s*[-–/]\s*(\d{4})\s*$/;
@@ -258,6 +259,7 @@ export function ArtistTree({ onShowList }: { onShowList: () => void }) {
                               Ranger dans une année
                             </button>
                           )}
+                          <ExportButton title={student.name} subtitle={year ? `Programme ${year.name}` : 'Programme'} songs={list} />
                           <button class="icon" title="Ajouter des morceaux" onClick={() => setPicker({ student, year })}>
                             ＋
                           </button>
