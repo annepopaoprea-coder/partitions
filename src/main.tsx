@@ -13,7 +13,14 @@ async function boot() {
   // lose the page being read.
   const update = registerSW({
     onNeedRefresh: () => setUpdate(() => update(true)),
-    onRegisteredSW: (_url, reg) => reg && setInterval(() => void reg.update(), 30 * 60 * 1000),
+    onRegisteredSW: (_url, reg) => {
+      if (!reg) return;
+      // Look for a new version regularly and whenever the app comes back to screen.
+      setInterval(() => void reg.update(), 30 * 60 * 1000);
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') void reg.update();
+      });
+    },
   });
   sync.start();
 }
