@@ -39,7 +39,7 @@ describe('lock', () => {
   it('unlocks with login, password and current code', async () => {
     const cfg = await make();
     const code = await totp(RFC_SECRET);
-    expect(await unlock(cfg, 'anne', 'mot de passe solide', code)).toEqual({ ok: true });
+    expect(await unlock(cfg, 'anne', 'mot de passe solide', code)).toMatchObject({ ok: true });
   });
 
   it('rejects a wrong password or login', async () => {

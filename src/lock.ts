@@ -147,7 +147,9 @@ export async function createLock(
 }
 
 export type UnlockResult =
-  | { ok: true; usedRecovery?: LockConfig } // updated config when a recovery code was spent
+  // kek opens this device's encrypted data; usedRecovery is the updated
+  // config when a recovery code was spent.
+  | { ok: true; kek: CryptoKey; usedRecovery?: LockConfig }
   | { ok: false; reason: 'credentials' | 'code' };
 
 // Check login + password, then the authenticator code or a recovery code.
@@ -156,14 +158,19 @@ export async function unlock(cfg: LockConfig, login: string, password: string, c
   const loginOk = login.trim().toLowerCase() === cfg.login;
   if (!sameBytes(check, unb64(cfg.passwordHash)) || !loginOk) return { ok: false, reason: 'credentials' };
   const secret = unbase32(await open(aes, cfg.secretBox));
-  if (await checkTotp(secret, code)) return { ok: true };
+  if (await checkTotp(secret, code)) return { ok: true, kek: aes };
   const rc = code.trim().toLowerCase();
   const codes: string[] = JSON.parse(await open(aes, cfg.recoveryBox));
   if (codes.includes(rc)) {
     const left = codes.filter((c) => c !== rc);
-    return { ok: true, usedRecovery: { ...cfg, recoveryBox: await seal(aes, JSON.stringify(left)) } };
+    return { ok: true, kek: aes, usedRecovery: { ...cfg, recoveryBox: await seal(aes, JSON.stringify(left)) } };
   }
   return { ok: false, reason: 'code' };
+}
+
+// Key that opens this device's encrypted data, derived from the password.
+export async function deriveKek(cfg: LockConfig, password: string): Promise<CryptoKey> {
+  return (await derive(password, unb64(cfg.salt), cfg.iterations)).aes;
 }
 
 // Only checks the password (used before changing lock settings).

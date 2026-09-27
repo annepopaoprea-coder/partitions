@@ -147,6 +147,8 @@ export class Sync {
   }
 
   private async pass() {
+    // Encrypted library still locked: nothing can be read or written yet.
+    if (this.store.sealed) return;
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       this.set({ state: 'offline' });
       return;

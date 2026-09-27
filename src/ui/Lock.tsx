@@ -3,6 +3,7 @@ import { useEffect, useState } from 'preact/hooks';
 import {
   checkPassword,
   createLock,
+  deriveKek,
   lockoutMs,
   newRecoveryCodes,
   newSecret,
@@ -19,27 +20,31 @@ import { drive, store, sync, useStore } from '../services';
 
 const RELOCK_AFTER_MS = 60 * 60 * 1000; // hidden for 1 hour
 
-let unlocked = sessionStorage.getItem('unlocked') === '1';
+// Unlocking lasts until the app is closed or reloaded: the key that opens the
+// encrypted library only lives in memory.
+let unlocked = false;
 const unlockListeners = new Set<() => void>();
 
 function setUnlocked(v: boolean) {
   unlocked = v;
-  if (v) sessionStorage.setItem('unlocked', '1');
-  else sessionStorage.removeItem('unlocked');
   for (const fn of unlockListeners) fn();
 }
 
+// Locking forgets the data key too: a reload is the simplest way to drop it.
 export function lockNow() {
   setUnlocked(false);
+  if (store.encrypted) location.reload();
 }
 
 let hiddenAt = 0;
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') hiddenAt = Date.now();
-  else if (hiddenAt && Date.now() - hiddenAt > RELOCK_AFTER_MS) setUnlocked(false);
+  else if (hiddenAt && Date.now() - hiddenAt > RELOCK_AFTER_MS) lockNow();
 });
 
 export function lockConfig(): LockConfig | null {
+  // While the library is sealed, records are not loaded: use the stored copy.
+  if (store.sealed) return store.lockMirror;
   return store.get<LockRec>(LOCK_ID)?.config ?? null;
 }
 
@@ -52,7 +57,40 @@ export function useLocked(): boolean {
     unlockListeners.add(fn);
     return () => unlockListeners.delete(fn);
   }, []);
-  return !!lockConfig() && !unlocked;
+  return (!!lockConfig() && !unlocked) || store.sealed;
+}
+
+// Progress overlay shown while the library is being (de)crypted.
+let showProgress: (text: string | null) => void = () => {};
+
+export function CryptoProgress() {
+  const [text, setText] = useState<string | null>(null);
+  showProgress = setText;
+  return text ? (
+    <div class="busy-overlay">
+      <div>{text}</div>
+    </div>
+  ) : null;
+}
+
+const progress = (label: string) => (done: number, total: number) =>
+  showProgress(done >= total ? null : `${label} ${Math.round((100 * done) / total)} %`);
+
+// Open (or, on first use, create) this device's encrypted library.
+async function openLibrary(kek: CryptoKey): Promise<string | null> {
+  let note: string | null = null;
+  if (store.sealed && !(await store.unseal(kek))) {
+    // The password was changed on another device: this copy cannot be opened
+    // any more, so start afresh and download the library again from Drive.
+    await store.wipe();
+    note = 'Le mot de passe a été changé sur un autre appareil : la bibliothèque se télécharge à nouveau depuis Google Drive.';
+  }
+  if (!store.encrypted) {
+    showProgress('Chiffrement des partitions sur cet appareil…');
+    await store.encrypt(kek, progress('Chiffrement des partitions sur cet appareil…'));
+    showProgress(null);
+  }
+  return note;
 }
 
 async function saveConfig(config: LockConfig | null) {
@@ -101,8 +139,11 @@ export function LockScreen() {
       if (r.ok) {
         localStorage.setItem('lock.failures', '0');
         localStorage.removeItem('lock.until');
-        if (r.usedRecovery) await saveConfig(r.usedRecovery);
+        const note = await openLibrary(r.kek);
+        if (r.usedRecovery && lockConfig()) await saveConfig(r.usedRecovery);
         setUnlocked(true);
+        if (note) alert(note);
+        void sync.run();
         return;
       }
       const n = failures() + 1;
@@ -172,6 +213,9 @@ function ForgotPassword({ onCancel }: { onCancel: () => void }) {
       return setMsg(
         "Réinitialisation refusée : il faut se connecter avec le compte Google qui contient cette bibliothèque (et que cet appareil l'ait déjà synchronisée).",
       );
+    // The encrypted copy on this device cannot be opened without the old
+    // password: forget it, the library comes back from Drive.
+    if (store.sealed || store.encrypted) await store.wipe();
     await saveConfig(null);
     localStorage.setItem('lock.failures', '0');
     localStorage.removeItem('lock.until');
@@ -187,6 +231,7 @@ function ForgotPassword({ onCancel }: { onCancel: () => void }) {
           alors supprimé et vous pourrez en créer un nouveau.
         </p>
         <p class="hint">Si vous avez seulement perdu votre téléphone, utilisez plutôt un code de secours à la place du code.</p>
+        <p class="hint">Les partitions chiffrées sur cet appareil seront retéléchargées depuis Google Drive.</p>
         {msg && <p class="error">{msg}</p>}
         <button class="primary wide" onClick={reset}>
           Se reconnecter à Google
@@ -218,6 +263,11 @@ export function SecuritySection() {
         <>
           <p>
             Accès protégé : identifiant <b>{cfg.login}</b>, mot de passe et Google Authenticator, sur tous vos appareils.
+          </p>
+          <p class="hint">
+            {store.encrypted
+              ? 'Les partitions et la bibliothèque sont chiffrées sur cet appareil.'
+              : 'Chiffrement de cet appareil : à la prochaine ouverture.'}
           </p>
           <div class="row-buttons">
             <button onClick={lockNow}>Verrouiller maintenant</button>
@@ -277,7 +327,16 @@ function LockSetup({ existing, onDone }: { existing: LockConfig | null; onDone: 
 
   async function finish() {
     setBusy(true);
-    await saveConfig(await createLock(login, pw, secret, recovery));
+    const cfg = await createLock(login, pw, secret, recovery);
+    await saveConfig(cfg);
+    // Encrypt this device's library, or reseal its key under the new password.
+    const kek = await deriveKek(cfg, pw);
+    if (store.encrypted) await store.rewrap(kek);
+    else {
+      showProgress('Chiffrement des partitions sur cet appareil…');
+      await store.encrypt(kek, progress('Chiffrement des partitions sur cet appareil…'));
+      showProgress(null);
+    }
     sessionStorage.removeItem('lock.mustSetup');
     setUnlocked(true);
     setBusy(false);
@@ -376,6 +435,9 @@ function LockRemove({ cfg, onDone }: { cfg: LockConfig; onDone: () => void }) {
   async function remove() {
     const r = await unlock(cfg, cfg.login, pw, code);
     if (!r.ok) return setMsg('Mot de passe ou code incorrect.');
+    showProgress('Déchiffrement des partitions…');
+    await store.decrypt(progress('Déchiffrement des partitions…'));
+    showProgress(null);
     await saveConfig(null);
     onDone();
   }

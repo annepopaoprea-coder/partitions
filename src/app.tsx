@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { drive, sync, useSignedIn, useSync } from './services';
 import { Library } from './ui/Library';
-import { LockScreen, useLocked } from './ui/Lock';
+import { CryptoProgress, LockScreen, useLocked } from './ui/Lock';
 import { Reader } from './ui/Reader';
 import { SetlistView } from './ui/Setlists';
 import { Settings } from './ui/Settings';
@@ -78,6 +78,7 @@ export function App() {
     <>
       <Screens />
       <UpdateBanner />
+      <CryptoProgress />
     </>
   );
 }
