@@ -33,7 +33,41 @@ window.addEventListener('popstate', () => {
   setTop(stack[stack.length - 1]);
 });
 
+let applyUpdate: (() => void) | null = null;
+let showUpdate: (fn: (() => void) | null) => void = () => {};
+
+export function setUpdate(fn: () => void) {
+  applyUpdate = fn;
+  showUpdate(fn);
+}
+
+function UpdateBanner() {
+  const [fn, setFn] = useState(applyUpdate);
+  showUpdate = setFn;
+  if (!fn) return null;
+  return (
+    <div class="update-banner">
+      Nouvelle version disponible
+      <button class="primary" onClick={fn}>
+        Mettre à jour
+      </button>
+      <button class="icon" title="Plus tard" onClick={() => setFn(null)}>
+        ✕
+      </button>
+    </div>
+  );
+}
+
 export function App() {
+  return (
+    <>
+      <Screens />
+      <UpdateBanner />
+    </>
+  );
+}
+
+function Screens() {
   const [view, setView] = useState<View>(stack[stack.length - 1]);
   setTop = setView;
   const signedIn = useSignedIn();

@@ -679,3 +679,20 @@ button.link {
   background: var(--bg);
   z-index: 10;
 }
+
+.update-banner {
+  position: fixed;
+  left: 50%;
+  bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  padding: 0.5rem 0.6rem 0.5rem 1rem;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.35);
+  z-index: 20;
+  white-space: nowrap;
+}
