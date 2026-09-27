@@ -131,9 +131,11 @@ export class Sync {
         return;
       }
       this.set({ state: 'syncing', message: undefined });
-      await this.uploadPending();
+      // Records first: edits and settings reach other devices right away,
+      // even while a large batch of files is still uploading.
       await this.pull();
       await this.push();
+      await this.uploadPending();
       this.set({ state: 'idle', lastSync: Date.now() });
       void this.prefetch();
     } catch (e) {
