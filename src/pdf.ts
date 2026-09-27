@@ -2,6 +2,7 @@
 
 import * as pdfjs from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { Frame, type PageSetup, type Rotation } from './frame';
 import { blobName, type Song } from './model';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -9,7 +10,8 @@ pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 interface Doc {
   pages: number;
   size(page: number): Promise<{ w: number; h: number }>;
-  render(page: number, canvas: HTMLCanvasElement, width: number, height: number): Promise<void>;
+  // Draw the whole page, turned clockwise by `rot`, at `scale` pixels per point.
+  draw(page: number, canvas: HTMLCanvasElement, scale: number, rot: Rotation): Promise<void>;
 }
 
 const cache = new Map<string, Promise<Doc>>();
@@ -29,11 +31,9 @@ async function openPdf(blob: Blob): Promise<Doc> {
       const vp = (await pdf.getPage(p + 1)).getViewport({ scale: 1 });
       return { w: vp.width, h: vp.height };
     },
-    async render(p, canvas, width, height) {
+    async draw(p, canvas, scale, rot) {
       const page = await pdf.getPage(p + 1);
-      const vp1 = page.getViewport({ scale: 1 });
-      const scale = Math.min(width / vp1.width, height / vp1.height);
-      const vp = page.getViewport({ scale });
+      const vp = page.getViewport({ scale, rotation: (page.rotate + rot) % 360 });
       canvas.width = Math.floor(vp.width);
       canvas.height = Math.floor(vp.height);
       await page.render({ canvas, canvasContext: canvas.getContext('2d')!, viewport: vp }).promise;
@@ -48,13 +48,17 @@ async function openImage(blob: Blob): Promise<Doc> {
     async size() {
       return { w: img.width, h: img.height };
     },
-    async render(_p, canvas, width, height) {
-      const scale = Math.min(width / img.width, height / img.height);
-      canvas.width = Math.floor(img.width * scale);
-      canvas.height = Math.floor(img.height * scale);
+    async draw(_p, canvas, scale, rot) {
+      const w = img.width * scale;
+      const h = img.height * scale;
+      const turned = rot % 180 !== 0;
+      canvas.width = Math.floor(turned ? h : w);
+      canvas.height = Math.floor(turned ? w : h);
       const ctx = canvas.getContext('2d')!;
       ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate((rot * Math.PI) / 180);
+      ctx.drawImage(img, -w / 2, -h / 2, w, h);
     },
   };
 }
@@ -89,14 +93,33 @@ export async function songPages(song: Song, load: (name: string) => Promise<Blob
   return out;
 }
 
+const MAX_SIDE = 8192;
+
+// Render one page, rotated and cropped as set up, as large as fits in
+// maxW × maxH. Returns the frame describing how it was drawn.
 export async function renderPage(
   ref: PageRef,
   canvas: HTMLCanvasElement,
-  width: number,
-  height: number,
+  maxW: number,
+  maxH: number,
   load: (name: string) => Promise<Blob | undefined>,
-) {
+  setup?: PageSetup,
+): Promise<Frame | undefined> {
   const blob = await load(ref.file);
   if (!blob) return;
-  await (await openDoc(ref.file, blob)).render(ref.page, canvas, width, height);
+  const doc = await openDoc(ref.file, blob);
+  // Sizes already include a PDF page's own rotation, like draw() at rot 0.
+  const { w, h } = await doc.size(ref.page);
+  const unit = new Frame(setup, w, h);
+  let scale = Math.min(maxW / unit.width, maxH / unit.height);
+  // Keep the full rotated page within canvas limits when zoomed on a small crop.
+  scale = Math.min(scale, MAX_SIDE / Math.max(unit.rw, unit.rh));
+  const full = document.createElement('canvas');
+  await doc.draw(ref.page, full, scale, unit.rot);
+  const frame = new Frame(setup, w * scale, h * scale);
+  canvas.width = Math.max(1, Math.round(frame.width));
+  canvas.height = Math.max(1, Math.round(frame.height));
+  const [l, t] = frame.crop;
+  canvas.getContext('2d')!.drawImage(full, -l * full.width, -t * full.height);
+  return frame;
 }

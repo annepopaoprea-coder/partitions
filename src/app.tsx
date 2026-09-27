@@ -30,7 +30,18 @@ export function back() {
   history.back();
 }
 
+// While set (concert mode), the back gesture is ignored.
+let backGuard: (() => boolean) | null = null;
+
+export function setBackGuard(fn: (() => boolean) | null) {
+  backGuard = fn;
+}
+
 window.addEventListener('popstate', () => {
+  if (backGuard?.()) {
+    history.pushState(stack.length, '');
+    return;
+  }
   if (stack.length > 1) stack.pop();
   setTop(stack[stack.length - 1]);
 });

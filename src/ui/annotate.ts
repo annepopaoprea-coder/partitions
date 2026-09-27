@@ -1,34 +1,42 @@
+import type { Frame } from '../frame';
 // Drawing of annotation items on a canvas laid over a rendered page.
 // Coordinates are fractions of the page, so drawings scale with the page.
 
 import type { AnnItem, Stroke } from '../model';
 
-export function drawItems(ctx: CanvasRenderingContext2D, items: AnnItem[], w: number, h: number) {
-  ctx.clearRect(0, 0, w, h);
-  for (const it of items) drawItem(ctx, it, w, h);
+// Draw on a canvas laid over the displayed page. `frame` maps page fractions
+// to canvas pixels (rotation, crop and scale included).
+export function drawItems(ctx: CanvasRenderingContext2D, items: AnnItem[], frame: Frame) {
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  for (const it of items) drawItem(ctx, it, frame);
 }
 
-export function drawItem(ctx: CanvasRenderingContext2D, it: AnnItem, w: number, h: number) {
+export function drawItem(ctx: CanvasRenderingContext2D, it: AnnItem, frame: Frame) {
   ctx.save();
   if (it.t === 'stroke') {
     ctx.globalAlpha = it.alpha;
     ctx.strokeStyle = it.color;
-    ctx.lineWidth = Math.max(1, it.width * w);
+    ctx.lineWidth = Math.max(1, it.width * frame.pw);
     ctx.lineCap = it.alpha < 1 ? 'butt' : 'round';
     ctx.lineJoin = 'round';
     ctx.beginPath();
     const p = it.pts;
-    ctx.moveTo(p[0] * w, p[1] * h);
-    for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i] * w, p[i + 1] * h);
-    if (p.length === 2) ctx.lineTo(p[0] * w + 0.1, p[1] * h);
+    ctx.moveTo(...frame.map(p[0], p[1]));
+    for (let i = 2; i < p.length; i += 2) ctx.lineTo(...frame.map(p[i], p[i + 1]));
+    if (p.length === 2) {
+      const [x, y] = frame.map(p[0], p[1]);
+      ctx.lineTo(x + 0.1, y);
+    }
     ctx.stroke();
   } else {
-    const size = Math.max(8, it.size * h);
+    // Text stays upright on screen whatever the page rotation.
+    const size = Math.max(8, it.size * frame.ph);
     ctx.fillStyle = it.color;
     ctx.textBaseline = 'top';
     ctx.font = `${it.t === 'stamp' ? 'bold italic ' : ''}${size}px "Noto Serif", Georgia, serif`;
+    const [x, y] = frame.map(it.x, it.y);
     const lines = (it.t === 'text' ? it.text : it.symbol).split('\n');
-    lines.forEach((line, i) => ctx.fillText(line, it.x * w, it.y * h + i * size * 1.2));
+    lines.forEach((line, i) => ctx.fillText(line, x, y + i * size * 1.2));
   }
   ctx.restore();
 }

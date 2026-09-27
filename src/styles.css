@@ -732,3 +732,115 @@ button.file-year {
 .list li > div.row {
   cursor: default;
 }
+
+/* Reader panels, links, concert mode, metronome */
+
+.float-panel {
+  position: absolute;
+  top: calc(4rem + env(safe-area-inset-top, 0px));
+  right: 0.8rem;
+  width: min(92vw, 380px);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  box-shadow: 0 8px 30px rgb(0 0 0 / 0.35);
+  z-index: 5;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+label.check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.metronome .bpm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 1.1rem;
+}
+
+.metronome .bpm b {
+  font-size: 2.2rem;
+}
+
+.metronome input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+  border: none;
+  background: transparent;
+}
+
+.metro-pulse {
+  position: absolute;
+  top: calc(0.8rem + env(safe-area-inset-top, 0px));
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  margin-left: -8px;
+  border-radius: 50%;
+  background: var(--line);
+  z-index: 6;
+  pointer-events: none;
+}
+
+.metro-pulse.on {
+  background: var(--accent);
+}
+
+.metro-pulse.accent {
+  background: var(--danger);
+  transform: scale(1.4);
+}
+
+.link-marker {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  min-height: 30px;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 88%, transparent);
+  color: var(--accent-text);
+  border: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.link-marker .del {
+  margin-left: 0.4rem;
+}
+
+.crop-box {
+  position: absolute;
+  border: 2px dashed var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  pointer-events: none;
+}
+
+.concert-exit {
+  position: absolute;
+  right: calc(0.6rem + env(safe-area-inset-right, 0px));
+  bottom: calc(0.6rem + env(safe-area-inset-bottom, 0px));
+  opacity: 0.35;
+  border-radius: 999px;
+  z-index: 6;
+}
+
+.concert-exit.holding {
+  opacity: 1;
+  background: var(--accent);
+  color: var(--accent-text);
+}

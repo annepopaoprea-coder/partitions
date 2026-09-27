@@ -28,6 +28,17 @@ export interface FileRef {
   size: number;
 }
 
+// A repeat jump placed on a page: touching it, or turning the page with the
+// pedal while it has not been used yet, goes to page `to`.
+export interface Link {
+  id: string;
+  page: number; // song page it sits on
+  x: number; // position, as page fractions
+  y: number;
+  to: number; // destination song page
+  label: string;
+}
+
 export interface Song extends Base {
   kind: 'song';
   title: string;
@@ -37,6 +48,10 @@ export interface Song extends Base {
   notes?: string;
   difficulty?: number;
   createdAt: number;
+  pages?: Record<number, import('./frame').PageSetup>; // rotation / crop per song page
+  links?: Link[];
+  tempo?: number; // metronome, beats per minute
+  beats?: number; // beats per bar
 }
 
 export interface Group extends Base {
@@ -54,7 +69,7 @@ export interface Setlist extends Base {
 
 // Annotation coordinates are fractions of the page size (0..1), so they
 // survive any screen size or zoom.
-export type Tool = 'pen' | 'highlighter' | 'eraser' | 'text' | 'stamp';
+export type Tool = 'pen' | 'highlighter' | 'eraser' | 'text' | 'stamp' | 'link';
 
 export interface Stroke {
   t: 'stroke';
