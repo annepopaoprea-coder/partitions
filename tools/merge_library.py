@@ -56,6 +56,15 @@ def title_key(s):
     return ' '.join(re.sub(r'[^a-z0-9]+', ' ', s).split())
 
 
+GENERIC_TITLE = re.compile(r'^(\d{4}-\d\d-\d\d|screenshot|img[_ -]?\d|scan|document|att\.)', re.I)
+
+
+def title_rank(title, modified):
+    """Prefer descriptive titles over file-name leftovers when merging copies."""
+    t = (title or '').strip()
+    return (not GENERIC_TITLE.match(t), not re.search(r'\(\d+\)\s*$', t), len(t), modified)
+
+
 def color(argb):
     c = argb & 0xFFFFFFFF
     return '#%06x' % (c & 0xFFFFFF), ((c >> 24) & 0xFF) / 255
@@ -70,7 +79,8 @@ class Library:
         self.songs = {}  # key (tuple of hashes) -> merged song
         self.groups = {}  # (type, norm name) -> group record
         self.setlists = {}  # norm name -> setlist
-        self.log = {'sources': [], 'merged': [], 'loose_skipped': [], 'loose_added': [], 'empty': [], 'superseded': []}
+        self.log = {'sources': [], 'merged': [], 'loose_skipped': [], 'loose_added': [], 'empty': [], 'superseded': [], 'missing': [], 'unsupported': []}
+        self.library_files = set()  # files already read through a library database
         self.source_time = {}  # source label -> backup date (for newest-version-wins)
 
     # -- files ------------------------------------------------------------
@@ -79,13 +89,16 @@ class Library:
         h = hashlib.sha256(data).hexdigest()
         if h not in self.blobs:
             ext = name.rsplit('.', 1)[-1].lower() if '.' in name else 'pdf'
-            if ext not in SCORE_EXT:
-                ext = 'pdf' if data[:5] == b'%PDF-' else 'jpg'
+            if ext not in SCORE_EXT and data[:5] == b'%PDF-':
+                ext = 'pdf'
             fid = str(uuid.uuid4())
             with open(os.path.join(self.files_dir, f'{fid}.{ext}'), 'wb') as o:
                 o.write(data)
             self.blobs[h] = {'id': fid, 'name': name, 'mime': MIME.get(ext, 'application/octet-stream'), 'size': len(data)}
         return h
+
+    def blobs_by_hash(self, h):
+        return self.blobs[h]
 
     # -- groups -------------------------------------------------------------
 
@@ -106,8 +119,9 @@ class Library:
                                  'key': key, 'anns': {}, 'sources': [], 'id': str(uuid.uuid4())}
         else:
             self.log['merged'].append((title, source, s['sources'][0]))
-            if modified > s['modified']:
-                s['title'], s['modified'] = title, modified
+            if title_rank(title, modified) > title_rank(s['title'], s['modified']):
+                s['title'] = title
+            s['modified'] = max(s['modified'], modified)
             s['created'] = min(s['created'], created) if s['created'] and created else s['created'] or created
             s['key'] = s['key'] or key
         s['sources'].append(source)
@@ -148,14 +162,9 @@ class Library:
         tmp.write(f.read(size))
         tmp.close()
         db = sqlite3.connect(tmp.name)
-        tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-
-        files_by_song = {}
-        for fid, sid, fpath, fsize in db.execute('SELECT Id, SongId, Path, FileSize FROM Files ORDER BY Id'):
-            files_by_song.setdefault(sid, []).append([os.path.basename(fpath or ''), fsize, None])
+        files_by_song = self.file_rows(db)
 
         # File contents follow the database, keyed by song id.
-        taken = {}
         n = 0
         while True:
             h = f.read(24)
@@ -172,8 +181,46 @@ class Library:
                 continue
             row[2] = self.store_blob(data, row[0] or f'{sid}.pdf')
             n += 1
-            taken[sid] = True
+        self.read_db(db, label, files_by_song, n)
+        db.close()
+        os.unlink(tmp.name)
 
+    def read_folder(self, db_path):
+        """A copied MobileSheets storage folder: mobilesheets.db next to the
+        score files it references (matched by file name)."""
+        folder = os.path.dirname(db_path)
+        label = f'bibliothèque MobileSheets ({os.path.basename(folder) or "racine"})'
+        self.source_time[label] = os.path.getmtime(db_path)
+        tmp = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
+        with open(db_path, 'rb') as src:
+            tmp.write(src.read())
+        tmp.close()
+        db = sqlite3.connect(tmp.name)
+        files_by_song = self.file_rows(db)
+        n = 0
+        for rows in files_by_song.values():
+            for row in rows:
+                p = os.path.join(folder, row[0])
+                if os.path.isfile(p):
+                    with open(p, 'rb') as fh:
+                        row[2] = self.store_blob(fh.read(), row[0])
+                    n += 1
+                    self.library_files.add(os.path.abspath(p))
+                else:
+                    self.log['missing'].append((row[0], label))
+        self.read_db(db, label, files_by_song, n)
+        db.close()
+        os.unlink(tmp.name)
+
+    @staticmethod
+    def file_rows(db):
+        rows = {}
+        for fid, sid, fpath, fsize in db.execute('SELECT Id, SongId, Path, FileSize FROM Files ORDER BY Id'):
+            rows.setdefault(sid, []).append([os.path.basename(fpath or ''), fsize, None])
+        return rows
+
+    def read_db(self, db, label, files_by_song, n):
+        tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         group_ids = {}  # (type, ms id) -> our id
         song_groups = {}  # ms song id -> {type: [ids]}
         for table, col, link, gtype in GROUP_TABLES:
@@ -204,7 +251,10 @@ class Library:
         songs = 0
         for sid, title, created, modified in db.execute('SELECT Id, Title, CreationDate, LastModified FROM Songs'):
             rows = files_by_song.get(sid, [])
-            hashes = [r[2] for r in rows if r[2]]
+            for r in rows:
+                if r[2] and self.blobs_by_hash(r[2])['mime'] == 'application/octet-stream':
+                    self.log['unsupported'].append((title, r[0]))
+            hashes = [r[2] for r in rows if r[2] and self.blobs_by_hash(r[2])['mime'] != 'application/octet-stream']
             if not hashes:
                 self.log['empty'].append((title, label))
                 continue
@@ -217,8 +267,6 @@ class Library:
             ids = [ours[s] for (s,) in db.execute('SELECT SongId FROM SetlistSong WHERE SetlistId=? ORDER BY Id', (lid,)) if s in ours]
             self.add_setlist(name or 'Setlist', ids, modified or 0)
             setlists += 1
-        db.close()
-        os.unlink(tmp.name)
         self.log['sources'].append(f'{label} : {songs} morceaux, {n} fichiers, {setlists} setlists')
         print(f'  {label} : {songs} morceaux, {setlists} setlists')
 
@@ -234,6 +282,10 @@ class Library:
             v = struct.unpack('<%dd' % (len(blob) // 8), blob)
             col, a = color(lc)
             alpha = a * (opacity or 100) / 100
+            # Type 2 is the highlighter: see-through, except white, which is
+            # used to mask printed marks and must stay opaque.
+            if atype == 2 and col != '#ffffff':
+                alpha = min(alpha, 0.35)
             if atype == 6:
                 chunks = [list(v[:4])]
             else:
@@ -273,6 +325,8 @@ class Library:
         return out
 
     def read_loose(self, path):
+        if os.path.abspath(path) in self.library_files:
+            return
         with open(path, 'rb') as fh:
             data = fh.read()
         h = hashlib.sha256(data).hexdigest()
@@ -377,6 +431,15 @@ class Library:
         if self.log['superseded']:
             L += ['', f"## Anciennes versions écartées ({len(self.log['superseded'])})"]
             L += [f'- {t} (seulement dans : {src})' for t, src in self.log['superseded']]
+        if self.log['missing']:
+            L += ['', f"## Fichiers introuvables ({len(self.log['missing'])})"]
+            L += [f'- {n} ({src})' for n, src in self.log['missing']]
+        if self.log['unsupported']:
+            L += ['', f"## Fichiers non pris en charge ({len(self.log['unsupported'])})"]
+            L += [f'- {t} — {n}' for t, n in self.log['unsupported']]
+        if self.log['loose_added']:
+            L += ['', f"## Fichiers isolés ajoutés sans classement ({len(self.log['loose_added'])})"]
+            L += [f'- {os.path.basename(p)}' for p in self.log['loose_added']]
         if self.log['empty']:
             L += ['', f"## Morceaux sans fichier, ignorés ({len(self.log['empty'])})"]
             L += [f'- {t} ({src})' for t, src in self.log['empty']]
@@ -394,10 +457,13 @@ def _unique(items):
 
 def main(out, sources):
     lib = Library(out)
-    msbs, loose = [], []
+    msbs, loose, dbs = [], [], []
     for src in sources:
         if os.path.isfile(src):
-            (msbs if src.lower().endswith('.msb') else loose).append(src)
+            if src.lower().endswith('.db'):
+                dbs.append(src)
+            else:
+                (msbs if src.lower().endswith('.msb') else loose).append(src)
             continue
         for root, _, names in os.walk(src):
             if os.path.abspath(root).startswith(os.path.abspath(out)):
@@ -407,11 +473,15 @@ def main(out, sources):
                 ext = n.rsplit('.', 1)[-1].lower()
                 if ext == 'msb':
                     msbs.append(p)
+                elif n.lower() == 'mobilesheets.db':
+                    dbs.append(p)
                 elif ext in SCORE_EXT:
                     loose.append(p)
     # Newest backups first, so their titles and order win ties.
     msbs.sort(key=os.path.getmtime, reverse=True)
-    print(f'{len(msbs)} sauvegarde(s), {len(loose)} fichier(s) isolé(s)')
+    print(f'{len(dbs)} bibliothèque(s), {len(msbs)} sauvegarde(s), {len(loose)} fichier(s) isolé(s)')
+    for d in dbs:
+        lib.read_folder(d)
     for m in msbs:
         lib.read_msb(m)
     for p in loose:
