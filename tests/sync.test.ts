@@ -132,3 +132,24 @@ describe('sync', () => {
     expect(cloud.tick).toBe(tick);
   });
 });
+
+describe('trash', () => {
+  it('restores a deleted song on every device', async () => {
+    const cloud = new MemoryCloud();
+    const a = await device(cloud);
+    const b = await device(cloud);
+    await a.store.put(song('s1', 'Musette'));
+    await a.sync.run();
+    await b.sync.run();
+    await b.store.remove(b.store.get<Song>('s1')!);
+    expect(b.store.trash().map((r) => r.id)).toEqual(['s1']);
+    await b.sync.run();
+    await a.sync.run();
+    expect(a.store.get('s1')).toBeUndefined();
+    await a.store.restore(a.store.trash()[0]);
+    await a.sync.run();
+    await b.sync.run();
+    expect(b.store.get<Song>('s1')?.title).toBe('Musette');
+    expect(b.store.trash()).toEqual([]);
+  });
+});

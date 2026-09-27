@@ -5,6 +5,7 @@ import { LockScreen, useLocked } from './ui/Lock';
 import { Reader } from './ui/Reader';
 import { SetlistView } from './ui/Setlists';
 import { Settings } from './ui/Settings';
+import { Trash } from './ui/Trash';
 import { SongEditor } from './ui/SongEditor';
 
 export type View =
@@ -12,7 +13,8 @@ export type View =
   | { name: 'reader'; songIds: string[]; start?: number; title?: string }
   | { name: 'song'; id: string }
   | { name: 'setlist'; id: string }
-  | { name: 'settings' };
+  | { name: 'settings' }
+  | { name: 'trash' };
 
 // Views stack like app screens; the Android back button pops them.
 let stack: View[] = [{ name: 'library' }];
@@ -102,6 +104,8 @@ function Screens() {
       return <SetlistView key={view.id} id={view.id} />;
     case 'settings':
       return <Settings />;
+    case 'trash':
+      return <Trash />;
     default:
       return <Library />;
   }

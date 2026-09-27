@@ -18,6 +18,7 @@ interface Base {
   updatedAt: number;
   deviceId: string;
   deleted?: boolean;
+  deletedAt?: number; // when it went to the trash
 }
 
 export interface FileRef {

@@ -30,7 +30,7 @@ export function SongEditor({ id }: { id: string }) {
   }
 
   async function remove() {
-    if (!confirm(`Supprimer « ${song!.title} » sur tous les appareils ?`)) return;
+    if (!confirm(`Mettre « ${song!.title} » à la corbeille ? Vous pourrez le restaurer pendant 30 jours.`)) return;
     await store.remove(song!);
     back();
   }

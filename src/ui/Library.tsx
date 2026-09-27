@@ -71,6 +71,9 @@ export function Library() {
             🔒
           </button>
         )}
+        <button class="icon" title="Corbeille" onClick={() => go({ name: 'trash' })}>
+          🗑
+        </button>
         <button class="icon" title="Réglages" onClick={() => go({ name: 'settings' })}>
           ⚙
         </button>
@@ -172,7 +175,7 @@ function GroupList({ type, onOpen, onTree }: { type: GroupType; onOpen: (g: Grou
     if (name && name !== g.name) await store.put({ ...g, name });
   }
   async function remove(g: Group) {
-    if (!confirm(`Supprimer « ${g.name} » ? Les morceaux ne sont pas supprimés.`)) return;
+    if (!confirm(`Mettre « ${g.name} » à la corbeille ? Les morceaux ne sont pas supprimés.`)) return;
     await store.remove(g);
   }
   return (

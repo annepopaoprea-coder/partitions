@@ -77,8 +77,22 @@ export class Store {
     for (const fn of this.changeListeners) fn();
   }
 
+  // Deleting moves to the trash; `restore` brings it back on every device.
   async remove(rec: Rec) {
-    await this.put({ ...rec, deleted: true });
+    await this.put({ ...rec, deleted: true, deletedAt: Date.now() });
+  }
+
+  async restore(rec: Rec) {
+    const { deletedAt: _, ...rest } = rec;
+    await this.put({ ...rest, deleted: false } as Rec);
+  }
+
+  // Deleted songs, setlists and groups from the last `days` days, newest first.
+  trash(days = 30): Rec[] {
+    const since = Date.now() - days * 86_400_000;
+    return [...this.recs.values()]
+      .filter((r) => r.deleted && r.kind !== 'ann' && r.kind !== 'lock' && (r.deletedAt ?? 0) >= since)
+      .sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0));
   }
 
   // Merge records from another device; returns how many changed.

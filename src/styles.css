@@ -724,3 +724,11 @@ button.file-year {
   font-size: 1.05rem;
   padding: 0.7rem 0.5rem;
 }
+
+.trash-hint {
+  padding: 0 1rem;
+}
+
+.list li > div.row {
+  cursor: default;
+}

@@ -64,7 +64,7 @@ export function SetlistView({ id }: { id: string }) {
         <button
           class="danger"
           onClick={async () => {
-            if (confirm(`Supprimer la setlist « ${list.name} » ?`)) {
+            if (confirm(`Mettre la setlist « ${list.name} » à la corbeille ?`)) {
               await store.remove(list);
               back();
             }
