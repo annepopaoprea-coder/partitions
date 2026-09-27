@@ -8,6 +8,7 @@ import type { Song } from '../src/model';
 class MemoryCloud {
   journals = new Map<string, { data: string; modified: string }>();
   blobs = new Map<string, Blob>();
+  writes: string[] = [];
   tick = 0;
 }
 
@@ -22,8 +23,12 @@ class MemoryRemote implements Remote {
   async readJournal(e: RemoteEntry): Promise<Journal> {
     return JSON.parse(this.cloud.journals.get(e.name)!.data);
   }
-  async writeJournal(j: Journal) {
-    this.cloud.journals.set(`${j.deviceId}.json`, { data: JSON.stringify(j), modified: String(++this.cloud.tick) });
+  async writeJournal(name: string, j: Journal) {
+    this.cloud.journals.set(name, { data: JSON.stringify(j), modified: String(++this.cloud.tick) });
+    this.cloud.writes.push(name);
+  }
+  async deleteJournal(name: string) {
+    this.cloud.journals.delete(name);
   }
   async listBlobs() {
     return new Set(this.cloud.blobs.keys());
@@ -151,5 +156,36 @@ describe('trash', () => {
     await b.sync.run();
     expect(b.store.get<Song>('s1')?.title).toBe('Musette');
     expect(b.store.trash()).toEqual([]);
+  });
+});
+
+describe('sharded journals', () => {
+  it('re-uploads only the shard holding the edited record', async () => {
+    const cloud = new MemoryCloud();
+    const a = await device(cloud);
+    const b = await device(cloud);
+    await a.store.put(Array.from({ length: 200 }, (_, i) => song(`s${i}`, `Morceau ${i}`)));
+    await a.sync.run();
+    const shardsUsed = new Set(cloud.writes).size;
+    expect(shardsUsed).toBeGreaterThan(30);
+    cloud.writes = [];
+    await a.store.put({ ...a.store.get<Song>('s42')!, title: 'Modifié' });
+    await a.sync.run();
+    expect(cloud.writes).toHaveLength(1);
+    await b.sync.run();
+    expect(b.store.all('song')).toHaveLength(200);
+    expect(b.store.get<Song>('s42')?.title).toBe('Modifié');
+  });
+
+  it('replaces the old single journal with shards and deletes it', async () => {
+    const cloud = new MemoryCloud();
+    const a = await device(cloud);
+    await a.store.put(song('s1', 'Ancien'));
+    // Simulate a device from before sharding.
+    cloud.journals.set(`${a.store.deviceId}.json`, { data: '{"records":[]}', modified: '1' });
+    await a.store.setMeta('sharded', false);
+    await a.sync.run();
+    expect(cloud.journals.has(`${a.store.deviceId}.json`)).toBe(false);
+    expect([...cloud.journals.keys()].every((k) => k.endsWith('.json.gz'))).toBe(true);
   });
 });

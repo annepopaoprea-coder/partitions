@@ -1,10 +1,13 @@
 // Automatic synchronisation through a shared cloud folder.
 //
-// Each device only ever writes its own journal file (journal/<deviceId>.json)
-// holding the latest version of every record it authored. Devices read each
-// other's journals and keep the newest version of each record, so two devices
-// never overwrite the same cloud file and no edit is lost to a race.
-// Song files are uploaded once under a unique name and cached on every device.
+// Each device only ever writes its own journal files, holding the latest
+// version of every record it authored. Devices read each other's journals and
+// keep the newest version of each record, so two devices never overwrite the
+// same cloud file and no edit is lost to a race.
+// A device's journal is split into SHARDS compressed files
+// (journal/<deviceId>.<shard>.json.gz) so an edit only re-uploads one small
+// file. Song files are uploaded once under a unique name and cached on every
+// device.
 
 import { blobName, type Rec } from './model';
 import type { Store } from './store';
@@ -26,7 +29,8 @@ export interface Remote {
   ready(): Promise<boolean>; // false when signed out
   listJournals(): Promise<RemoteEntry[]>;
   readJournal(entry: RemoteEntry): Promise<Journal>;
-  writeJournal(journal: Journal): Promise<void>;
+  writeJournal(name: string, journal: Journal): Promise<void>;
+  deleteJournal(name: string): Promise<void>;
   listBlobs(): Promise<Set<string>>;
   uploadBlob(name: string, blob: Blob): Promise<void>;
   downloadBlob(name: string): Promise<Blob>;
@@ -42,6 +46,20 @@ export interface SyncStatus {
   missingFiles: number;
 }
 
+export const SHARDS = 64;
+
+// Stable shard for a record id (FNV-1a hash).
+export function shardOf(id: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < id.length; i++) {
+    h ^= id.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0) % SHARDS;
+}
+
+export const journalName = (deviceId: string, shard: number) => `${deviceId}.${shard}.json.gz`;
+
 // With the app open in several tabs, only one syncs at a time; the others
 // skip their turn instead of uploading the same files twice.
 function exclusive(fn: () => Promise<void>): Promise<void> {
@@ -55,7 +73,7 @@ export class Sync {
   private listeners = new Set<() => void>();
   private running: Promise<void> | null = null;
   private again = false;
-  private localSeq = 0;
+  private shardSeq = new Map<number, number>(); // edits per shard, to spot edits made mid-upload
   private timer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(
@@ -63,10 +81,18 @@ export class Sync {
     private remote: Remote,
     private deviceName: () => string = () => 'Appareil',
   ) {
-    store.onLocalChange(() => {
-      this.localSeq++;
-      this.soon(3000);
-    });
+    store.onLocalChange((ids) => void this.markDirty(ids));
+  }
+
+  private async markDirty(ids: string[]) {
+    const dirty = new Set((await this.store.getMeta<number[]>('dirtyShards')) ?? []);
+    for (const id of ids) {
+      const sh = shardOf(id);
+      dirty.add(sh);
+      this.shardSeq.set(sh, (this.shardSeq.get(sh) ?? 0) + 1);
+    }
+    await this.store.setMeta('dirtyShards', [...dirty]);
+    this.soon(3000);
   }
 
   subscribe(fn: () => void) {
@@ -163,9 +189,9 @@ export class Sync {
 
   private async pull() {
     const seen = (await this.store.getMeta<Record<string, string>>('seenJournals')) ?? {};
-    const own = `${this.store.deviceId}.json`;
+    const me = this.store.deviceId;
     for (const entry of await this.remote.listJournals()) {
-      if (entry.name === own || seen[entry.name] === entry.modified) continue;
+      if (entry.name.startsWith(`${me}.`) || seen[entry.name] === entry.modified) continue;
       const journal = await this.remote.readJournal(entry);
       await this.store.merge(journal.records ?? []);
       seen[entry.name] = entry.modified;
@@ -174,17 +200,37 @@ export class Sync {
   }
 
   private async push() {
-    if (!(await this.store.getMeta<boolean>('dirty'))) return;
-    const seq = this.localSeq;
-    await this.remote.writeJournal({
-      deviceId: this.store.deviceId,
-      deviceName: this.deviceName(),
-      updatedAt: Date.now(),
-      records: this.store.ownRecords(),
-    });
-    // Edits made during the upload stay dirty for the next pass.
-    if (seq === this.localSeq) await this.store.setMeta('dirty', false);
-    else this.again = true;
+    const me = this.store.deviceId;
+    const dirty = new Set((await this.store.getMeta<number[]>('dirtyShards')) ?? []);
+    // Devices from before sharding kept one big journal: rewrite it as shards.
+    const legacy = await this.store.getMeta<boolean>('dirty');
+    const upgrading = (await this.store.getMeta<boolean>('sharded')) !== true;
+    if (upgrading) for (const r of this.store.ownRecords()) dirty.add(shardOf(r.id));
+    if (!dirty.size) {
+      if (upgrading) await this.store.setMeta('sharded', true);
+      return;
+    }
+    const own = this.store.ownRecords();
+    for (const sh of [...dirty].sort((a, b) => a - b)) {
+      const seq = this.shardSeq.get(sh) ?? 0;
+      await this.remote.writeJournal(journalName(me, sh), {
+        deviceId: me,
+        deviceName: this.deviceName(),
+        updatedAt: Date.now(),
+        records: own.filter((r) => shardOf(r.id) === sh),
+      });
+      // An edit to this shard during the upload keeps it dirty for next time.
+      if ((this.shardSeq.get(sh) ?? 0) === seq) {
+        const now = new Set((await this.store.getMeta<number[]>('dirtyShards')) ?? []);
+        now.delete(sh);
+        await this.store.setMeta('dirtyShards', [...now]);
+      } else this.again = true;
+    }
+    if (upgrading) {
+      await this.remote.deleteJournal(`${me}.json`);
+      await this.store.setMeta('sharded', true);
+      if (legacy) await this.store.setMeta('dirty', false);
+    }
   }
 
   private prefetching: Promise<void> | null = null;

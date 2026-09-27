@@ -221,12 +221,14 @@ export class DriveRemote implements Remote {
   }
 
   async readJournal(entry: RemoteEntry): Promise<Journal> {
-    return (await this.call(`${API}/files/${entry.id}?alt=media`)).json();
+    const res = await this.call(`${API}/files/${entry.id}?alt=media`);
+    if (!entry.name.endsWith('.gz')) return res.json();
+    return JSON.parse(await gunzip(await res.blob()));
   }
 
-  async writeJournal(journal: Journal) {
-    const name = `${journal.deviceId}.json`;
-    const body = new Blob([JSON.stringify(journal)], { type: 'application/json' });
+  async writeJournal(name: string, journal: Journal) {
+    const json = JSON.stringify(journal);
+    const body = name.endsWith('.gz') ? await gzip(json) : new Blob([json], { type: 'application/json' });
     let id = this.journalIds.get(name);
     if (!id) {
       const found = await this.list(`name='${name}' and '${this.folders!.journal}' in parents`);
@@ -236,8 +238,14 @@ export class DriveRemote implements Remote {
       await this.call(`${UPLOAD}/files/${id}?uploadType=media`, { method: 'PATCH', body });
     } else {
       id = await this.upload(name, this.folders!.journal, body);
-      this.journalIds.set(name, id);
     }
+    this.journalIds.set(name, id);
+  }
+
+  async deleteJournal(name: string) {
+    const found = await this.list(`name='${name}' and '${this.folders!.journal}' in parents`);
+    for (const f of found) await this.call(`${API}/files/${f.id}`, { method: 'DELETE' });
+    this.journalIds.delete(name);
   }
 
   async listBlobs(): Promise<Set<string>> {
@@ -276,4 +284,13 @@ export class DriveRemote implements Remote {
     }
     return (await this.call(`${API}/files/${id}?alt=media`)).blob();
   }
+}
+
+async function gzip(text: string): Promise<Blob> {
+  const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'));
+  return new Blob([await new Response(stream).arrayBuffer()], { type: 'application/gzip' });
+}
+
+async function gunzip(blob: Blob): Promise<string> {
+  return new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).text();
 }

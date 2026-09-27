@@ -11,7 +11,7 @@ export class Store {
   deviceId = '';
   private db!: IDBPDatabase;
   private listeners = new Set<Listener>();
-  private changeListeners = new Set<Listener>();
+  private changeListeners = new Set<(ids: string[]) => void>();
 
   async open(name = 'partitions') {
     this.db = await openDB(name, 1, {
@@ -36,7 +36,7 @@ export class Store {
   }
 
   // Fired only for edits made on this device (to schedule an upload).
-  onLocalChange(fn: Listener) {
+  onLocalChange(fn: (ids: string[]) => void) {
     this.changeListeners.add(fn);
     return () => this.changeListeners.delete(fn);
   }
@@ -72,9 +72,8 @@ export class Store {
       tx.store.put(saved);
     }
     await tx.done;
-    await this.setMeta('dirty', true);
     this.emit();
-    for (const fn of this.changeListeners) fn();
+    for (const fn of this.changeListeners) fn(list.map((r) => r.id));
   }
 
   // Deleting moves to the trash; `restore` brings it back on every device.
