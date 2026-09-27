@@ -42,6 +42,14 @@ export interface SyncStatus {
   missingFiles: number;
 }
 
+// With the app open in several tabs, only one syncs at a time; the others
+// skip their turn instead of uploading the same files twice.
+function exclusive(fn: () => Promise<void>): Promise<void> {
+  const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+  if (!locks) return fn();
+  return locks.request('partitions-sync', { ifAvailable: true }, (lock) => (lock ? fn() : undefined));
+}
+
 export class Sync {
   status: SyncStatus = { state: 'idle', pendingFiles: 0, missingFiles: 0 };
   private listeners = new Set<() => void>();
@@ -103,12 +111,12 @@ export class Sync {
       this.again = true;
       return this.running;
     }
-    this.running = (async () => {
+    this.running = exclusive(async () => {
       do {
         this.again = false;
         await this.pass();
       } while (this.again);
-    })().finally(() => (this.running = null));
+    }).finally(() => (this.running = null));
     return this.running;
   }
 
