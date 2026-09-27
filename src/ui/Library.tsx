@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'preact/hooks';
 import { go, SyncBadge } from '../app';
 import { GROUP_LABELS, GROUP_TYPES, uid, type Group, type GroupType, type Song } from '../model';
+import { ArtistTree } from './ArtistTree';
 import { lockConfig, lockNow } from './Lock';
 import { collator, groupNames, groupsOf, importFiles, normalize, store, useStore } from '../services';
 
@@ -15,7 +16,7 @@ const TABS: { id: Tab; label: string }[] = [
 type Sort = 'title' | 'recent';
 
 // Remembered while the app is open, so coming back from a song keeps the list.
-const ui = { tab: 'songs' as Tab, query: '', filter: null as Group | null, sort: 'title' as Sort };
+const ui = { tab: 'songs' as Tab, query: '', filter: null as Group | null, sort: 'title' as Sort, artistList: false };
 
 export function Library() {
   useStore();
@@ -27,6 +28,8 @@ export function Library() {
   const setQuery = (q: string) => setQueryState((ui.query = q));
   const setFilter = (g: Group | null) => setFilterState((ui.filter = g));
   const setSort = (s: Sort) => setSortState((ui.sort = s));
+  const [artistList, setArtistListState] = useState(ui.artistList);
+  const setArtistList = (v: boolean) => setArtistListState((ui.artistList = v));
   const input = useRef<HTMLInputElement>(null);
 
   const songs = store.all('song');
@@ -116,8 +119,11 @@ export function Library() {
 
       {tab === 'setlists' && <SetlistList />}
 
-      {GROUP_TYPES.includes(tab as GroupType) && (
+      {tab === 'artist' && !artistList && <ArtistTree onShowList={() => setArtistList(true)} />}
+
+      {GROUP_TYPES.includes(tab as GroupType) && (tab !== 'artist' || artistList) && (
         <GroupList
+          onTree={tab === 'artist' ? () => setArtistList(false) : undefined}
           type={tab as GroupType}
           onOpen={(g) => {
             setFilter(g);
@@ -153,7 +159,7 @@ function SongList({ songs }: { songs: Song[] }) {
   );
 }
 
-function GroupList({ type, onOpen }: { type: GroupType; onOpen: (g: Group) => void }) {
+function GroupList({ type, onOpen, onTree }: { type: GroupType; onOpen: (g: Group) => void; onTree?: () => void }) {
   const groups = groupsOf(type);
   const songs = store.all('song');
   const count = (g: Group) => songs.filter((s) => s.groups[type]?.includes(g.id)).length;
@@ -175,6 +181,7 @@ function GroupList({ type, onOpen }: { type: GroupType; onOpen: (g: Group) => vo
         <button class="primary" onClick={add}>
           + {GROUP_LABELS[type].one}
         </button>
+        {onTree && <button onClick={onTree}>Par année scolaire</button>}
       </div>
       <ul class="list">
         {groups.map((g) => (

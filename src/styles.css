@@ -612,3 +612,70 @@ button.link {
 .lock-card p {
   margin: 0;
 }
+
+/* Artists tree */
+
+.tree,
+.tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tree {
+  padding: 0 0.5rem 2rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.tree ul {
+  padding-left: 1.4rem;
+  border-left: 1px solid var(--line);
+  margin-left: 0.9rem;
+}
+
+.node {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+
+.node-label {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0.55rem 0.3rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node.year .node-label {
+  font-size: 1.05rem;
+}
+
+.node .count {
+  margin-left: auto;
+}
+
+.caret {
+  width: 1rem;
+  color: var(--muted);
+}
+
+.tree-empty {
+  padding: 0.6rem 0.3rem;
+}
+
+.picker-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 10;
+}

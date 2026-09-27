@@ -95,7 +95,15 @@ export function SetlistView({ id }: { id: string }) {
   );
 }
 
-function SongPicker({ initial, onDone }: { initial: string[]; onDone: (ids: string[] | null) => void }) {
+export function SongPicker({
+  initial,
+  onDone,
+  title,
+}: {
+  initial: string[];
+  onDone: (ids: string[] | null) => void;
+  title?: string;
+}) {
   const [chosen, setChosen] = useState<string[]>(initial);
   const [query, setQuery] = useState('');
   const q = normalize(query);
@@ -110,7 +118,7 @@ function SongPicker({ initial, onDone }: { initial: string[]; onDone: (ids: stri
         <button class="icon" onClick={() => onDone(null)}>
           ←
         </button>
-        <h1>{chosen.length} morceau(x)</h1>
+        <h1>{title ? `${title} · ` : ''}{chosen.length} morceau(x)</h1>
         <button class="primary" onClick={() => onDone(chosen)}>
           OK
         </button>
