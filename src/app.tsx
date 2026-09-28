@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { drive, sync, useSignedIn, useSync } from './services';
+import { AddIncoming } from './ui/AddIncoming';
 import { Library } from './ui/Library';
 import { CryptoProgress, LockScreen, useLocked } from './ui/Lock';
 import { Reader } from './ui/Reader';
@@ -84,6 +85,7 @@ export function App() {
 }
 
 function Screens() {
+  const locked = useLocked();
   const [view, setView] = useState<View>(stack[stack.length - 1]);
   setTop = setView;
   const signedIn = useSignedIn();
@@ -107,8 +109,17 @@ function Screens() {
     if (signedIn) void sync.run();
   }, [signedIn]);
 
-  if (useLocked()) return <LockScreen />;
+  if (locked) return <LockScreen />;
 
+  return (
+    <>
+      {screen(view)}
+      <AddIncoming />
+    </>
+  );
+}
+
+function screen(view: View) {
   switch (view.name) {
     case 'reader':
       return <Reader key={view.songIds.join()} songIds={view.songIds} start={view.start} title={view.title} />;
