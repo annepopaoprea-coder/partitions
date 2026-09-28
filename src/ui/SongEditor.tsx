@@ -2,6 +2,7 @@ import { useRef, useState } from 'preact/hooks';
 import { back, go } from '../app';
 import { GROUP_LABELS, GROUP_TYPES, uid, type Group, type GroupType, type Song } from '../model';
 import { addFile, groupsOf, store, useStore } from '../services';
+import { MuseScorePanel } from './MuseScorePanel';
 
 export function SongEditor({ id }: { id: string }) {
   useStore();
@@ -89,6 +90,7 @@ export function SongEditor({ id }: { id: string }) {
           <button onClick={() => fileInput.current?.click()}>+ Ajouter un fichier</button>
           <input ref={fileInput} type="file" accept="application/pdf,image/*" multiple hidden onChange={addFiles} />
         </div>
+        <MuseScorePanel song={song} />
         <button class="danger wide" onClick={remove}>
           Supprimer le morceau
         </button>

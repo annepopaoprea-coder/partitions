@@ -84,6 +84,7 @@ export interface PageRef {
 export async function songPages(song: Song, load: (name: string) => Promise<Blob | undefined>): Promise<PageRef[]> {
   const out: PageRef[] = [];
   for (const f of song.files) {
+    if (f.role === 'source') continue;
     const name = blobName(f);
     const blob = await load(name);
     if (!blob) continue;

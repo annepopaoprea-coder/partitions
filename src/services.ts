@@ -49,7 +49,12 @@ export function useSignedIn() {
 
 export function mimeOf(file: File): string {
   if (file.type) return file.type;
-  return file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream';
+  const n = file.name.toLowerCase();
+  if (n.endsWith('.pdf')) return 'application/pdf';
+  if (n.endsWith('.mscz')) return 'application/x-musescore';
+  if (n.endsWith('.mxl')) return 'application/vnd.recordare.musicxml';
+  if (n.endsWith('.musicxml') || n.endsWith('.xml')) return 'application/vnd.recordare.musicxml+xml';
+  return 'application/octet-stream';
 }
 
 // Store a file locally and queue it for upload.
@@ -61,10 +66,12 @@ export async function addFile(file: File): Promise<FileRef> {
   return ref;
 }
 
+export const isScoreSource = (name: string) => /\.(mscz|mxl|musicxml)$/i.test(name);
+
 export async function importFiles(files: File[]): Promise<Song[]> {
   const songs: Song[] = [];
   for (const file of files) {
-    const ref = await addFile(file);
+    const ref: FileRef = { ...(await addFile(file)), ...(isScoreSource(file.name) ? { role: 'source' as const } : {}) };
     songs.push({
       id: uid(),
       kind: 'song',
@@ -77,6 +84,8 @@ export async function importFiles(files: File[]): Promise<Song[]> {
     });
   }
   await store.put(songs);
+  // MuseScore / MusicXML files get their PDF from MuseScore on the PC.
+  void import('./bridge').then((b) => b.engraveSources(songs));
   return songs;
 }
 

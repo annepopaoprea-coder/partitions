@@ -111,7 +111,7 @@ export function Library() {
             <button class="primary" onClick={() => input.current?.click()}>
               + Importer
             </button>
-            <input ref={input} type="file" accept="application/pdf,image/*" multiple hidden onChange={onImport} />
+            <input ref={input} type="file" accept="application/pdf,image/*,.mscz,.mxl,.musicxml" multiple hidden onChange={onImport} />
           </div>
           {filter && (
             <div class="filter-chip">

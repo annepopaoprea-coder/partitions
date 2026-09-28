@@ -30,6 +30,7 @@ export async function exportPdf(opts: ExportOptions): Promise<Blob> {
   for (const song of opts.songs) {
     let index = 0; // song page index, across its files
     for (const f of song.files) {
+      if (f.role === 'source') continue;
       const name = blobName(f);
       const blob = await opts.load(name);
       if (!blob) continue;

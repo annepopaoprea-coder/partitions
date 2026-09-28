@@ -26,6 +26,8 @@ export interface FileRef {
   name: string; // original file name, for display
   mime: string;
   size: number;
+  // 'source': the MuseScore file behind the displayed PDF (kept, not shown).
+  role?: 'source';
 }
 
 // A repeat jump placed on a page: touching it, or turning the page with the

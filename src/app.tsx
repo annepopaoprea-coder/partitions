@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { drive, sync, useSignedIn, useSync } from './services';
+import { bridgeStatus, collectEdits } from './bridge';
 import { AddIncoming } from './ui/AddIncoming';
 import { Library } from './ui/Library';
 import { CryptoProgress, LockScreen, useLocked } from './ui/Lock';
@@ -49,6 +50,21 @@ window.addEventListener('popstate', () => {
   setTop(stack[stack.length - 1]);
 });
 
+let showToast: (text: string) => void = () => {};
+
+export function toast(text: string) {
+  showToast(text);
+}
+
+function Toast() {
+  const [text, setText] = useState('');
+  showToast = (t) => {
+    setText(t);
+    setTimeout(() => setText(''), 5000);
+  };
+  return text ? <div class="toast">{text}</div> : null;
+}
+
 let applyUpdate: (() => void) | null = null;
 let showUpdate: (fn: (() => void) | null) => void = () => {};
 
@@ -80,6 +96,7 @@ export function App() {
       <Screens />
       <UpdateBanner />
       <CryptoProgress />
+      <Toast />
     </>
   );
 }
@@ -108,6 +125,18 @@ function Screens() {
   useEffect(() => {
     if (signedIn) void sync.run();
   }, [signedIn]);
+
+  // On the PC with MuseScore: pick up each save made in MuseScore.
+  useEffect(() => {
+    let on = false;
+    void bridgeStatus().then((s) => (on = !!s?.musescore));
+    const t = setInterval(async () => {
+      if (!on || locked || document.visibilityState !== 'visible') return;
+      const titles = await collectEdits();
+      if (titles.length) toast(`Mis à jour depuis MuseScore : ${titles.join(', ')}`);
+    }, 4000);
+    return () => clearInterval(t);
+  }, [locked]);
 
   if (locked) return <LockScreen />;
 

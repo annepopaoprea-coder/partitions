@@ -271,7 +271,14 @@ export function Reader({ songIds, start = 0, title }: { songIds: string[]; start
             </>
           )
         )}
-        {pages && !count && <p class="empty">{error || 'Aucune page à afficher.'}</p>}
+        {pages && !count && (
+          <p class="empty">
+            {error ||
+              (current === undefined && songIds.some((id) => store.get<Song>(id)?.files.every((f) => f.role === 'source'))
+                ? 'Partition MuseScore pas encore mise en page : ouvrez Partitions sur le PC où MuseScore est installé.'
+                : 'Aucune page à afficher.')}
+          </p>
+        )}
         {!pages && <p class="empty">Chargement…</p>}
       </div>
 
