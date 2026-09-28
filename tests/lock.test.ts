@@ -49,6 +49,12 @@ describe('lock', () => {
     expect(await unlock(cfg, 'autre', 'mot de passe solide', code)).toEqual({ ok: false, reason: 'credentials' });
   });
 
+  it('accepts the password alone on a trusted device', async () => {
+    const cfg = await make();
+    expect(await unlock(cfg, 'anne', 'mot de passe solide', null)).toMatchObject({ ok: true });
+    expect(await unlock(cfg, 'anne', 'mauvais', null)).toEqual({ ok: false, reason: 'credentials' });
+  });
+
   it('rejects a wrong code', async () => {
     const cfg = await make();
     expect(await unlock(cfg, 'anne', 'mot de passe solide', '000000')).toMatchObject({ ok: false, reason: 'code' });

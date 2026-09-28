@@ -98,6 +98,30 @@ async function saveConfig(config: LockConfig | null) {
   void sync.run();
 }
 
+// ---- Trusted device --------------------------------------------------------
+// After one full login (password + code), this device only asks for the
+// password for 30 days. Trust is tied to the current password (its salt).
+
+const TRUST_DAYS = 30;
+
+interface Trust {
+  salt: string;
+  until: number;
+}
+
+export async function trustedUntil(cfg: LockConfig | null): Promise<number | null> {
+  const t = await store.getMeta<Trust>('trust');
+  return cfg && t && t.salt === cfg.salt && t.until > Date.now() ? t.until : null;
+}
+
+async function trustDevice(cfg: LockConfig) {
+  await store.setMeta('trust', { salt: cfg.salt, until: Date.now() + TRUST_DAYS * 86_400_000 } satisfies Trust);
+}
+
+export async function forgetTrust() {
+  await store.setMeta('trust', null);
+}
+
 // ---- Lock screen ---------------------------------------------------------
 
 function failures() {
@@ -106,9 +130,11 @@ function failures() {
 
 export function LockScreen() {
   const cfg = lockConfig()!;
-  const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
+  const [trusted, setTrusted] = useState<number | null | undefined>(undefined);
+  const [remember, setRemember] = useState(true);
+  useEffect(() => void trustedUntil(cfg).then(setTrusted), [cfg.salt]);
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const [wait, setWait] = useState(0);
@@ -135,10 +161,11 @@ export function LockScreen() {
     setBusy(true);
     setMsg('');
     try {
-      const r = await unlock(cfg, login, password, code);
+      const r = await unlock(cfg, cfg.login, password, trusted ? null : code);
       if (r.ok) {
         localStorage.setItem('lock.failures', '0');
         localStorage.removeItem('lock.until');
+        if (!trusted && remember) await trustDevice(r.usedRecovery ?? cfg);
         const note = await openLibrary(r.kek);
         if (r.usedRecovery && lockConfig()) await saveConfig(r.usedRecovery);
         setUnlocked(true);
@@ -150,7 +177,7 @@ export function LockScreen() {
       localStorage.setItem('lock.failures', String(n));
       localStorage.setItem('lock.until', String(Date.now() + lockoutMs(n)));
       setWait(Math.ceil(lockoutMs(n) / 1000));
-      setMsg(r.reason === 'code' ? 'Code incorrect.' : 'Identifiant ou mot de passe incorrect.');
+      setMsg(r.reason === 'code' ? 'Code incorrect.' : 'Mot de passe incorrect.');
       setCode('');
     } finally {
       setBusy(false);
@@ -164,34 +191,41 @@ export function LockScreen() {
       <form class="lock-card" onSubmit={submit}>
         <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" width={64} height={64} />
         <h1>Partitions</h1>
-        <label>
-          Identifiant
-          <input autocomplete="username" value={login} onInput={(e) => setLogin((e.target as HTMLInputElement).value)} required />
-        </label>
+        <input type="hidden" autocomplete="username" value={cfg.login} />
         <label>
           Mot de passe
           <input
             type="password"
             autocomplete="current-password"
+            autoFocus
             value={password}
             onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
             required
           />
         </label>
-        <label>
-          Code Google Authenticator
-          <input
-            inputMode="numeric"
-            autocomplete="one-time-code"
-            placeholder="123 456 (ou un code de secours)"
-            value={code}
-            onInput={(e) => setCode((e.target as HTMLInputElement).value)}
-            required
-          />
-        </label>
+        {trusted === null && (
+          <>
+            <label>
+              Code Google Authenticator
+              <input
+                inputMode="numeric"
+                autocomplete="one-time-code"
+                placeholder="123 456 (ou un code de secours)"
+                value={code}
+                onInput={(e) => setCode((e.target as HTMLInputElement).value)}
+                required
+              />
+            </label>
+            <label class="check">
+              <input type="checkbox" checked={remember} onChange={() => setRemember(!remember)} />
+              Ne plus demander le code sur cet appareil pendant {TRUST_DAYS} jours
+            </label>
+          </>
+        )}
+        {trusted && <p class="hint">Appareil de confiance : pas de code jusqu'au {new Date(trusted).toLocaleDateString('fr')}.</p>}
         {msg && <p class="error">{msg}</p>}
         {wait > 0 && <p class="error">Trop d'essais. Réessayez dans {wait} s.</p>}
-        <button class="primary wide" disabled={busy || wait > 0}>
+        <button class="primary wide" disabled={busy || wait > 0 || trusted === undefined}>
           {busy ? 'Vérification…' : 'Entrer'}
         </button>
         <button type="button" class="link" onClick={() => setForgot(true)}>
@@ -264,6 +298,7 @@ export function SecuritySection() {
           <p>
             Accès protégé : identifiant <b>{cfg.login}</b>, mot de passe et Google Authenticator, sur tous vos appareils.
           </p>
+          <TrustLine cfg={cfg} />
           <p class="hint">
             {store.encrypted
               ? 'Les partitions et la bibliothèque sont chiffrées sur cet appareil.'
@@ -329,6 +364,7 @@ function LockSetup({ existing, onDone }: { existing: LockConfig | null; onDone: 
     setBusy(true);
     const cfg = await createLock(login, pw, secret, recovery);
     await saveConfig(cfg);
+    await trustDevice(cfg); // the code was just checked on this device
     // Encrypt this device's library, or reseal its key under the new password.
     const kek = await deriveKek(cfg, pw);
     if (store.encrypted) await store.rewrap(kek);
@@ -460,5 +496,19 @@ function LockRemove({ cfg, onDone }: { cfg: LockConfig; onDone: () => void }) {
         Annuler
       </button>
     </section>
+  );
+}
+
+function TrustLine({ cfg }: { cfg: LockConfig }) {
+  const [until, setUntil] = useState<number | null>(null);
+  useEffect(() => void trustedUntil(cfg).then(setUntil), [cfg.salt]);
+  if (!until) return <p class="hint">Cet appareil demande le code Google Authenticator à chaque ouverture.</p>;
+  return (
+    <p class="hint">
+      Appareil de confiance : seul le mot de passe est demandé jusqu'au {new Date(until).toLocaleDateString('fr')}.{' '}
+      <button class="link" onClick={() => forgetTrust().then(() => setUntil(null))}>
+        Redemander le code
+      </button>
+    </p>
   );
 }

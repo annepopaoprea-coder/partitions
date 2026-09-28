@@ -153,10 +153,12 @@ export type UnlockResult =
   | { ok: false; reason: 'credentials' | 'code' };
 
 // Check login + password, then the authenticator code or a recovery code.
-export async function unlock(cfg: LockConfig, login: string, password: string, code: string): Promise<UnlockResult> {
+// `code` is null on a trusted device: the password alone is enough there.
+export async function unlock(cfg: LockConfig, login: string, password: string, code: string | null): Promise<UnlockResult> {
   const { check, aes } = await derive(password, unb64(cfg.salt), cfg.iterations);
   const loginOk = login.trim().toLowerCase() === cfg.login;
   if (!sameBytes(check, unb64(cfg.passwordHash)) || !loginOk) return { ok: false, reason: 'credentials' };
+  if (code === null) return { ok: true, kek: aes };
   const secret = unbase32(await open(aes, cfg.secretBox));
   if (await checkTotp(secret, code)) return { ok: true, kek: aes };
   const rc = code.trim().toLowerCase();
