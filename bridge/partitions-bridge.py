@@ -295,7 +295,9 @@ def open_in_musescore(song_id: str, title: str, name: str, data: bytes):
         path.write_bytes(data)
     with lock:
         edits[song_id] = {'path': path, 'title': title, 'sent_mtime': path.stat().st_mtime, 'version': None}
-    exe = mscore()
+    # The desktop launcher applies the screen scale (see ~/.local/bin/musescore).
+    gui = Path.home() / '.local' / 'bin' / 'musescore'
+    exe = str(gui) if gui.exists() else mscore()
     if not exe:
         raise RuntimeError("MuseScore n'est pas installé")
     env = {k: v for k, v in os.environ.items() if k != 'QT_QPA_PLATFORM'}
