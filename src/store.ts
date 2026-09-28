@@ -201,13 +201,24 @@ export class Store {
     } catch {
       return false;
     }
-    this.rawDek = raw;
-    this.dek = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
-    this.recs.clear();
-    for (const row of (await this.db.getAll('recs')) as (Rec | Sealed)[]) {
-      const r = 'box' in row ? (JSON.parse(dec.decode(await open(this.dek, row.box))) as Rec) : row;
-      this.recs.set(r.id, r);
+    return this.unsealRaw(raw);
+  }
+
+  // Open the sealed library with the data key itself (fingerprint unlock).
+  async unsealRaw(raw: ArrayBuffer): Promise<boolean> {
+    const dek = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+    const recs = new Map<string, Rec>();
+    try {
+      for (const row of (await this.db.getAll('recs')) as (Rec | Sealed)[]) {
+        const r = 'box' in row ? (JSON.parse(dec.decode(await open(dek, row.box))) as Rec) : row;
+        recs.set(r.id, r);
+      }
+    } catch {
+      return false; // not this library's key
     }
+    this.rawDek = raw;
+    this.dek = dek;
+    this.recs = recs;
     this.sealed = false;
     this.emit();
     return true;
@@ -232,6 +243,10 @@ export class Store {
   // The data key in clear, kept in memory only while unlocked.
   private rawDek?: ArrayBuffer;
 
+  dataKey(): ArrayBuffer | undefined {
+    return this.rawDek;
+  }
+
   // Turn encryption off: rewrite everything in clear.
   async decrypt(onProgress?: (done: number, total: number) => void) {
     if (!this.dek) return;
@@ -240,6 +255,7 @@ export class Store {
     this.dek = undefined;
     this.rawDek = undefined;
     await this.db.delete('meta', 'dataKey');
+    await this.db.delete('meta', 'bioKey');
   }
 
   // Rewrite every record and file with `dek` (or in clear when undefined).

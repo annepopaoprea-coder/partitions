@@ -13,6 +13,7 @@ import {
   unlock,
   type LockConfig,
 } from '../lock';
+import { biometricAvailable, biometricEnrolled, enrollBiometric, removeBiometric, unlockWithBiometric } from '../biometric';
 import { LOCK_ID, type LockRec } from '../model';
 import { drive, store, sync, useStore } from '../services';
 
@@ -135,6 +136,25 @@ export function LockScreen() {
   const [trusted, setTrusted] = useState<number | null | undefined>(undefined);
   const [remember, setRemember] = useState(true);
   useEffect(() => void trustedUntil(cfg).then(setTrusted), [cfg.salt]);
+  const [bio, setBio] = useState(false);
+
+  // Offer the fingerprint straight away when it is set up on this device.
+  useEffect(() => {
+    void biometricEnrolled(store).then((on) => {
+      setBio(on);
+      if (on) void withFingerprint();
+    });
+  }, []);
+
+  async function withFingerprint() {
+    setMsg('');
+    if (await unlockWithBiometric(store)) {
+      localStorage.setItem('lock.failures', '0');
+      localStorage.removeItem('lock.until');
+      setUnlocked(true);
+      void sync.run();
+    } else setMsg("Empreinte non reconnue ou annulée. Réessayez, ou entrez le mot de passe.");
+  }
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const [wait, setWait] = useState(0);
@@ -192,6 +212,14 @@ export function LockScreen() {
         <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" width={64} height={64} />
         <h1>Partitions</h1>
         <input type="hidden" autocomplete="username" value={cfg.login} />
+        {bio && (
+          <>
+            <button type="button" class="primary wide fingerprint" onClick={withFingerprint}>
+              👆 Déverrouiller avec l'empreinte
+            </button>
+            <p class="hint or">ou avec le mot de passe :</p>
+          </>
+        )}
         <label>
           Mot de passe
           <input
@@ -225,7 +253,7 @@ export function LockScreen() {
         {trusted && <p class="hint">Appareil de confiance : pas de code jusqu'au {new Date(trusted).toLocaleDateString('fr')}.</p>}
         {msg && <p class="error">{msg}</p>}
         {wait > 0 && <p class="error">Trop d'essais. Réessayez dans {wait} s.</p>}
-        <button class="primary wide" disabled={busy || wait > 0 || trusted === undefined}>
+        <button class={bio ? 'wide' : 'primary wide'} disabled={busy || wait > 0 || trusted === undefined}>
           {busy ? 'Vérification…' : 'Entrer'}
         </button>
         <button type="button" class="link" onClick={() => setForgot(true)}>
@@ -299,6 +327,7 @@ export function SecuritySection() {
             Accès protégé : identifiant <b>{cfg.login}</b>, mot de passe et Google Authenticator, sur tous vos appareils.
           </p>
           <TrustLine cfg={cfg} />
+          <FingerprintLine login={cfg.login} />
           <p class="hint">
             {store.encrypted
               ? 'Les partitions et la bibliothèque sont chiffrées sur cet appareil.'
@@ -510,5 +539,43 @@ function TrustLine({ cfg }: { cfg: LockConfig }) {
         Redemander le code
       </button>
     </p>
+  );
+}
+
+function FingerprintLine({ login }: { login: string }) {
+  const [available, setAvailable] = useState<boolean | null>(null);
+  const [on, setOn] = useState(false);
+  const [msg, setMsg] = useState('');
+  useEffect(() => {
+    void biometricAvailable().then(setAvailable);
+    void biometricEnrolled(store).then(setOn);
+  }, []);
+  if (available === null) return null;
+  if (!available)
+    return <p class="hint">Empreinte digitale : ce navigateur n'a pas accès à un capteur d'empreinte sur cet appareil.</p>;
+  async function enable() {
+    setMsg('');
+    const r = await enrollBiometric(store, login);
+    if (r === 'ok') setOn(true);
+    else if (r === 'unsupported')
+      setMsg("Cet appareil ne permet pas d'ouvrir les partitions chiffrées avec l'empreinte. Le mot de passe reste nécessaire.");
+    else setMsg('Activation annulée.');
+  }
+  return (
+    <div class="fingerprint-line">
+      {on ? (
+        <p class="hint">
+          👆 Empreinte digitale activée sur cet appareil.{' '}
+          <button class="link" onClick={() => removeBiometric(store).then(() => setOn(false))}>
+            Désactiver
+          </button>
+        </p>
+      ) : (
+        <button onClick={enable} disabled={!store.encrypted}>
+          👆 Se connecter avec l'empreinte digitale sur cet appareil
+        </button>
+      )}
+      {msg && <p class="error">{msg}</p>}
+    </div>
   );
 }

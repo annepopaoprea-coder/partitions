@@ -950,3 +950,19 @@ label.check {
   padding: 1rem 1.5rem;
   font-weight: 600;
 }
+
+.fingerprint {
+  font-size: 1.05rem;
+  min-height: 52px;
+}
+
+.lock-card .or {
+  text-align: center;
+}
+
+.fingerprint-line {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  align-items: flex-start;
+}
